@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LakePulse</title>
+<style>
+  /* ---- Tokens. Dark values are declared under both the OS media query and the
+         explicit data-theme scope so the in-page toggle wins either way. ---- */
+  :root {
+    color-scheme: light;
+    --plane:          #f9f9f7;
+    --surface:        #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;
+    --series-2:       #eb6834;
+    --series-3:       #1baf7a;
+    --good:           #0ca30c;
+    --warning:        #fab219;
+    --critical:       #d03b3b;
+    --shadow:         0 1px 2px rgba(11,11,11,0.05), 0 4px 12px rgba(11,11,11,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --plane:          #0d0d0d;
+      --surface:        #1a1a19;
+      --text-primary:   #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-2:       #d95926;
+      --series-3:       #199e70;
+      --shadow:         none;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane:          #0d0d0d;
+    --surface:        #1a1a19;
+    --text-primary:   #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --series-2:       #d95926;
+    --series-3:       #199e70;
+    --shadow:         none;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--plane);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 56px; }
+
+  /* ---- Header ---- */
+  header { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+  h1 { font-size: 20px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13px; color: var(--text-primary);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 12px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  button:hover { border-color: var(--baseline); }
+  button:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; }
+  .live-dot.paused { background: var(--text-muted); }
+  .live-dot.pulse { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { .live-dot.pulse { animation: none; } }
+
+  /* ---- Status strip ---- */
+  .strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 13px 6px 10px; box-shadow: var(--shadow);
+  }
+  .chip .name { font-weight: 550; font-size: 13px; }
+  .chip .detail { color: var(--text-secondary); font-size: 12px; }
+  .chip svg { flex: none; }
+
+  /* ---- Cards & KPIs ---- */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px; box-shadow: var(--shadow);
+  }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpi .label { color: var(--text-secondary); font-size: 12px; font-weight: 550; text-transform: uppercase; letter-spacing: 0.04em; }
+  /* Scales down on narrow cards so a growing revenue figure never clips. */
+  .kpi .value { font-size: clamp(22px, 5.2vw, 30px); font-weight: 640; letter-spacing: -0.02em; margin-top: 6px; line-height: 1.1; }
+  .kpi .foot { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+
+  .grid2 { display: grid; grid-template-columns: 1.55fr 1fr; gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 4px; }
+  h2 { font-size: 14px; font-weight: 600; margin: 0; }
+  .card-note { color: var(--text-muted); font-size: 12px; }
+  .linkish { background: none; border: none; padding: 0; color: var(--text-secondary); font-size: 12px; text-decoration: underline; cursor: pointer; }
+
+  /* ---- Chart plumbing ---- */
+  .chart { position: relative; width: 100%; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .tip {
+    position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; font-size: 12px; white-space: nowrap; z-index: 5;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.14);
+  }
+  .tip .tip-row { display: flex; align-items: center; gap: 7px; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
+
+  /* ---- Tables ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 550; color: var(--text-secondary); font-size: 12px; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+  tbody tr:last-child td { border-bottom: none; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mono { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .scroll { overflow-x: auto; }
+  .hidden { display: none; }
+
+  .empty { color: var(--text-secondary); text-align: center; padding: 28px 12px; }
+  .err { border-left: 3px solid var(--warning); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>LakePulse</h1>
+      <div class="sub">Purchase events streaming through Kafka &rarr; Flink &rarr; Iceberg, queried with Trino</div>
+    </div>
+    <div class="controls">
+      <button id="pause" aria-pressed="false">
+        <span class="live-dot pulse" id="dot"></span><span id="pauseLabel">Live</span>
+      </button>
+      <button id="refresh">Refresh</button>
+      <button id="theme" aria-label="Toggle colour theme">Theme</button>
+    </div>
+  </header>
+
+  <div class="strip" id="strip" aria-live="polite"></div>
+
+  <div id="banner"></div>
+
+  <section class="kpis" id="kpis" aria-label="Key figures"></section>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-head">
+        <h2>Purchases per minute</h2>
+        <button class="linkish" id="toggleSeriesTable">Show data table</button>
+      </div>
+      <div class="card-note" id="seriesNote">Event time, most recent 30 minutes</div>
+      <div class="chart" id="lineChart"></div>
+      <div class="scroll hidden" id="seriesTable"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Revenue by device</h2></div>
+      <div class="card-note">Total purchase value</div>
+      <div class="chart" id="barChart"></div>
+      <div class="legend" id="barLegend"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Latest purchases</h2>
+      <span class="card-note" id="tailNote"></span>
+    </div>
+    <div class="scroll" id="recent"></div>
+  </div>
+
+</div>
+
+<script>
+const DEVICE_SLOT = { desktop: 'var(--series-1)', mobile: 'var(--series-2)', tablet: 'var(--series-3)' };
+const FALLBACK = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)'];
+const SVG = 'http://www.w3.org/2000/svg';
+
+let paused = false, timer = null, last = null;
+
+/* ---------- helpers ---------- */
+const el = (t, a = {}, kids = []) => {
+  const n = document.createElement(t);
+  for (const [k, v] of Object.entries(a)) k === 'class' ? n.className = v : k === 'html' ? n.innerHTML = v : n.setAttribute(k, v);
+  for (const c of [].concat(kids)) n.append(c);
+  return n;
+};
+const svgEl = (t, a = {}) => {
+  const n = document.createElementNS(SVG, t);
+  for (const [k, v] of Object.entries(a)) n.setAttribute(k, v);
+  return n;
+};
+const money = n => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const compactMoney = n => n >= 1000 ? '$' + (n / 1000).toFixed(1) + 'k' : '$' + n.toFixed(0);
+const num = n => n.toLocaleString();
+const deviceColor = (d, i) => DEVICE_SLOT[String(d).toLowerCase()] || FALLBACK[i % 3];
+
+/* ---------- status strip ---------- */
+const ICONS = {
+  good: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="var(--good)"/><path d="M4.6 8.3l2.1 2.1 4.6-4.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  warning: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6l6.4 11.2H1.6z" fill="var(--warning)"/><path d="M8 5.8v3.1" stroke="#3a2a00" stroke-width="1.7" stroke-linecap="round"/><circle cx="8" cy="11.2" r="0.95" fill="#3a2a00"/></svg>',
+  critical: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="var(--critical)"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>'
+};
+
+function renderStrip(components) {
+  const strip = document.getElementById('strip');
+  strip.replaceChildren(...components.map(c => {
+    const chip = el('div', { class: 'chip' });
+    chip.append(el('span', { html: ICONS[c.status] || ICONS.critical }));
+    chip.append(el('span', { class: 'name' }, c.label));
+    chip.append(el('span', { class: 'detail' }, c.detail));
+    return chip;
+  }));
+}
+
+/* ---------- KPI tiles ---------- */
+function renderKpis(k) {
+  const tiles = [
+    ['Purchases', num(k.purchases), 'events in the Iceberg sink'],
+    ['Revenue', money(k.revenue), 'sum of purchase value'],
+    ['Avg order', money(k.avg_order), 'per purchase event'],
+    ['Buyers', num(k.users), 'distinct user ids'],
+    ['Priced', `${k.purchases ? Math.round(100 * k.priced / k.purchases) : 0}%`,
+     `${num(k.priced)} events carry an amount`]
+  ];
+  document.getElementById('kpis').replaceChildren(...tiles.map(([label, value, foot]) => {
+    const c = el('div', { class: 'card kpi' });
+    c.append(el('div', { class: 'label' }, label));
+    c.append(el('div', { class: 'value' }, value));
+    c.append(el('div', { class: 'foot' }, foot));
+    return c;
+  }));
+}
+
+/* ---------- line chart: purchases per minute ---------- */
+function renderLine(series) {
+  const host = document.getElementById('lineChart');
+  host.replaceChildren();
+  if (!series.length) { host.append(el('div', { class: 'empty' }, 'Waiting for the first checkpoint to commit…')); return; }
+
+  const W = host.clientWidth || 640, H = 248;
+  const m = { t: 14, r: 12, b: 28, l: 42 };
+  const iw = Math.max(10, W - m.l - m.r), ih = H - m.t - m.b;
+  const maxY = Math.max(...series.map(d => d.events), 1);
+  const niceMax = Math.ceil(maxY / 4) * 4 || 4;
+
+  const x = i => series.length === 1 ? m.l + iw / 2 : m.l + (i / (series.length - 1)) * iw;
+  const y = v => m.t + ih - (v / niceMax) * ih;
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img',
+    'aria-label': `Purchases per minute, ${series.length} minutes, peak ${maxY}` });
+
+  // Recessive gridlines + y ticks
+  for (let i = 0; i <= 4; i++) {
+    const v = (niceMax / 4) * i, yy = y(v);
+    svg.append(svgEl('line', { x1: m.l, x2: m.l + iw, y1: yy, y2: yy,
+      stroke: i === 0 ? 'var(--baseline)' : 'var(--grid)', 'stroke-width': 1 }));
+    const t = svgEl('text', { x: m.l - 8, y: yy + 4, 'text-anchor': 'end',
+      fill: 'var(--text-muted)', 'font-size': 11, style: 'font-variant-numeric:tabular-nums' });
+    t.textContent = String(Math.round(v));
+    svg.append(t);
+  }
+
+  // Area fill under the line, then the 2px line on top
+  const line = series.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(d.events).toFixed(1)}`).join(' ');
+  const gid = 'areaFade';
+  const grad = svgEl('linearGradient', { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 });
+  grad.append(svgEl('stop', { offset: '0%', 'stop-color': 'var(--series-1)', 'stop-opacity': 0.22 }));
+  grad.append(svgEl('stop', { offset: '100%', 'stop-color': 'var(--series-1)', 'stop-opacity': 0.02 }));
+  const defs = svgEl('defs'); defs.append(grad); svg.append(defs);
+  svg.append(svgEl('path', { d: `${line} L${x(series.length - 1)},${y(0)} L${x(0)},${y(0)} Z`, fill: `url(#${gid})`, stroke: 'none' }));
+  svg.append(svgEl('path', { d: line, fill: 'none', stroke: 'var(--series-1)', 'stroke-width': 2,
+    'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+
+  // X labels: first, middle, last only - never one per point
+  [0, Math.floor((series.length - 1) / 2), series.length - 1]
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .forEach(i => {
+      const t = svgEl('text', { x: x(i), y: H - 8, fill: 'var(--text-muted)', 'font-size': 11,
+        'text-anchor': i === 0 ? 'start' : i === series.length - 1 ? 'end' : 'middle',
+        style: 'font-variant-numeric:tabular-nums' });
+      t.textContent = series[i].label;
+      svg.append(t);
+    });
+
+  // Crosshair + marker, revealed on hover
+  const cross = svgEl('line', { y1: m.t, y2: m.t + ih, stroke: 'var(--baseline)', 'stroke-width': 1, opacity: 0 });
+  const ring = svgEl('circle', { r: 5, fill: 'var(--series-1)', stroke: 'var(--surface)', 'stroke-width': 2, opacity: 0 });
+  svg.append(cross); svg.append(ring);
+
+  host.append(svg);
+  const tip = el('div', { class: 'tip' });
+  host.append(tip);
+
+  // Hit target spans the whole plot, bigger than the marks themselves
+  const hit = svgEl('rect', { x: m.l, y: m.t, width: iw, height: ih, fill: 'transparent', style: 'cursor:crosshair' });
+  svg.append(hit);
+
+  const move = ev => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    let i = 0, best = Infinity;
+    series.forEach((d, j) => { const dd = Math.abs(x(j) - px); if (dd < best) { best = dd; i = j; } });
+    const d = series[i];
+    cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('opacity', 1);
+    ring.setAttribute('cx', x(i)); ring.setAttribute('cy', y(d.events)); ring.setAttribute('opacity', 1);
+    tip.innerHTML = `<div class="tip-row"><span class="swatch" style="background:var(--series-1)"></span>
+        <span>${d.label}</span></div>
+      <div class="tip-row"><b>${num(d.events)}</b> purchases</div>
+      <div class="tip-row" style="color:var(--text-secondary)">${money(d.revenue)} revenue</div>`;
+    tip.style.opacity = 1;
+    const rel = x(i) * (r.width / W);
+    tip.style.left = Math.min(Math.max(rel - tip.offsetWidth / 2, 0), r.width - tip.offsetWidth) + 'px';
+    tip.style.top = Math.max(y(d.events) * (r.height / H) - tip.offsetHeight - 12, 0) + 'px';
+  };
+  hit.addEventListener('mousemove', move);
+  hit.addEventListener('mouseleave', () => {
+    tip.style.opacity = 0; cross.setAttribute('opacity', 0); ring.setAttribute('opacity', 0);
+  });
+}
+
+/* ---------- bar chart: revenue by device ---------- */
+function renderBars(devices) {
+  const host = document.getElementById('barChart');
+  const legend = document.getElementById('barLegend');
+  host.replaceChildren(); legend.replaceChildren();
+  if (!devices.length) { host.append(el('div', { class: 'empty' }, 'No device data yet.')); return; }
+
+  const W = host.clientWidth || 360;
+  const rowH = 44, H = devices.length * rowH + 12;
+  const labelW = 74, valueW = 76;
+  const trackW = Math.max(20, W - labelW - valueW);
+  const maxV = Math.max(...devices.map(d => d.revenue), 1);
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img',
+    'aria-label': 'Revenue by device' });
+
+  devices.forEach((d, i) => {
+    const cy = i * rowH + 10, bh = 20;
+    const colour = deviceColor(d.device, i);
+    // 2px surface gap keeps adjacent fills from fusing
+    const w = Math.max(3, (d.revenue / maxV) * trackW - 2);
+
+    const name = svgEl('text', { x: 0, y: cy + bh / 2 + 4, fill: 'var(--text-primary)', 'font-size': 13 });
+    name.textContent = d.device;
+    svg.append(name);
+
+    svg.append(svgEl('rect', { x: labelW, y: cy, width: trackW, height: bh, rx: 4, fill: 'var(--grid)', opacity: 0.5 }));
+    const bar = svgEl('rect', { x: labelW, y: cy, width: w, height: bh, rx: 4, fill: colour });
+    svg.append(bar);
+
+    // Direct value label - this is the relief the light-mode contrast WARN requires
+    const val = svgEl('text', { x: W, y: cy + bh / 2 + 4, 'text-anchor': 'end',
+      fill: 'var(--text-primary)', 'font-size': 13, 'font-weight': 550,
+      style: 'font-variant-numeric:tabular-nums' });
+    val.textContent = compactMoney(d.revenue);
+    svg.append(val);
+
+    const sub = svgEl('text', { x: labelW, y: cy + bh + 15, fill: 'var(--text-muted)', 'font-size': 11 });
+    sub.textContent = `${num(d.events)} purchases · ${money(d.revenue / Math.max(d.events, 1))} avg`;
+    svg.append(sub);
+
+    bar.addEventListener('mouseenter', () => bar.setAttribute('opacity', 0.82));
+    bar.addEventListener('mouseleave', () => bar.setAttribute('opacity', 1));
+  });
+
+  host.append(svg);
+
+  devices.forEach((d, i) => {
+    const s = el('span');
+    s.append(el('span', { class: 'swatch', style: `background:${deviceColor(d.device, i)}` }));
+    s.append(document.createTextNode(d.device));
+    legend.append(s);
+  });
+}
+
+/* ---------- tables ---------- */
+function table(cols, rows) {
+  const t = el('table');
+  const thead = el('thead'), tr = el('tr');
+  cols.forEach(c => tr.append(el('th', { class: c.num ? 'num' : '' }, c.label)));
+  thead.append(tr); t.append(thead);
+  const tb = el('tbody');
+  rows.forEach(r => {
+    const row = el('tr');
+    cols.forEach(c => row.append(el('td', { class: c.num ? 'num' : (c.mono ? 'mono' : '') }, c.get(r))));
+    tb.append(row);
+  });
+  t.append(tb);
+  return t;
+}
+
+function renderRecent(recent) {
+  const host = document.getElementById('recent');
+  if (!recent.length) { host.replaceChildren(el('div', { class: 'empty' }, 'No events yet.')); return; }
+  host.replaceChildren(table([
+    { label: 'Time', mono: true, get: r => r.at },
+    { label: 'User', mono: true, get: r => r.user },
+    { label: 'Device', get: r => r.device },
+    { label: 'Path', get: r => '/' + String(r.url || '').replace(/^\/+/, '') },
+    { label: 'Amount', num: true, get: r => r.amount == null ? '—' : money(r.amount) }
+  ], recent));
+  const priced = recent.filter(r => r.amount != null).length;
+  document.getElementById('tailNote').textContent =
+    `${recent.length} most recent · ${recent.length - priced} without a recorded amount`;
+}
+
+function renderSeriesTable(series) {
+  document.getElementById('seriesTable').replaceChildren(table([
+    { label: 'Minute', mono: true, get: r => r.label },
+    { label: 'Purchases', num: true, get: r => num(r.events) },
+    { label: 'Revenue', num: true, get: r => money(r.revenue) }
+  ], [...series].reverse()));
+}
+
+/* ---------- banner ---------- */
+function banner(msg) {
+  document.getElementById('banner').replaceChildren(
+    msg ? el('div', { class: 'card err', style: 'margin-bottom:12px' }, msg) : el('span')
+  );
+}
+
+/* ---------- data loop ---------- */
+async function load() {
+  try {
+    const h = await fetch('/api/health').then(r => r.json());
+    renderStrip(h.components);
+  } catch { /* strip just stays as-is if the probe call fails */ }
+
+  try {
+    const res = await fetch('/api/overview');
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      banner(e.error === 'pipeline_not_ready'
+        ? 'The Iceberg sink table is not queryable yet — Flink creates it on its first checkpoint. This page will pick it up automatically.'
+        : 'Could not read from Trino. Retrying…');
+      return;
+    }
+    const d = await res.json();
+    banner(null);
+    last = d;
+    renderKpis(d.kpis);
+    renderLine(d.series);
+    renderBars(d.devices);
+    renderSeriesTable(d.series);
+    renderRecent(d.recent);
+  } catch {
+    banner('Dashboard backend unreachable. Retrying…');
+  }
+}
+
+function schedule() {
+  clearInterval(timer);
+  if (!paused) timer = setInterval(load, 5000);
+}
+
+/* ---------- controls ---------- */
+document.getElementById('pause').addEventListener('click', e => {
+  paused = !paused;
+  e.currentTarget.setAttribute('aria-pressed', String(paused));
+  document.getElementById('pauseLabel').textContent = paused ? 'Paused' : 'Live';
+  document.getElementById('dot').className = 'live-dot' + (paused ? ' paused' : ' pulse');
+  schedule();
+});
+document.getElementById('refresh').addEventListener('click', load);
+
+document.getElementById('theme').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'dark' ? 'light' : cur === 'light' ? null : 'dark';
+  if (next) document.documentElement.setAttribute('data-theme', next);
+  else document.documentElement.removeAttribute('data-theme');
+  try { next ? localStorage.setItem('theme', next) : localStorage.removeItem('theme'); } catch {}
+  if (last) { renderLine(last.series); renderBars(last.devices); }
+});
+
+document.getElementById('toggleSeriesTable').addEventListener('click', e => {
+  const t = document.getElementById('seriesTable');
+  const shown = t.classList.toggle('hidden') === false;
+  e.currentTarget.textContent = shown ? 'Hide data table' : 'Show data table';
+});
+
+try {
+  const saved = localStorage.getItem('theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+} catch {}
+
+// Charts are drawn in pixel space, so they must be redrawn when the box changes.
+let rt = null;
+new ResizeObserver(() => {
+  clearTimeout(rt);
+  rt = setTimeout(() => { if (last) { renderLine(last.series); renderBars(last.devices); } }, 120);
+}).observe(document.getElementById('lineChart'));
+
+load();
+schedule();
+</script>
+</body>
+</html>

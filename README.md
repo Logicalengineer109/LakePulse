@@ -1,5 +1,8 @@
-**E2E Real-Time Data Pipeline with Kafka, Flink, Iceberg, Trino, MinIO, and Superset**
-======================================================================================
+**LakePulse — Real-Time Clickstream Lakehouse**
+================================================
+
+*A real-time clickstream lakehouse: Kafka and Flink stream events into Iceberg on
+MinIO, queryable through Trino and visualized in a live dashboard.*
 
 ![Docker](https://img.shields.io/badge/Docker-Enabled-blue?logo=docker)
 ![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-Event%20Streaming-black?logo=apachekafka)
@@ -12,7 +15,7 @@
 **📖 Overview**
 ---------------
 
-This project demonstrates a **real-time end-to-end (E2E) data pipeline** designed to handle clickstream data. It shows how to ingest, process, store, query, and visualize streaming data using open-source tools, all containerized with Docker for easy deployment.
+**LakePulse** is a **real-time end-to-end data pipeline** designed to handle clickstream data. It shows how to ingest, process, store, query, and visualize streaming data using open-source tools, all containerized with Docker for easy deployment.
 
 🔎 **Technologies Used:**
 
@@ -60,12 +63,14 @@ This pipeline is perfect for **data engineers** and **students** interested in l
 ------------------------
 
 ```bash
-e2e-data-pipeline/
-├── docker-compose.yml   # Docker setup for all services
-├── flink/               # Flink SQL client and streaming jobs
-├── producer/            # Clickstream data producer using Faker
-├── superset/            # Superset setup and configuration
-└── trino/               # Trino configuration for Iceberg 
+LakePulse/
+├── docker-compose.yaml          # Docker setup for all services
+├── docker-compose.override.yaml # Local image/port fixes + the dashboard service
+├── dashboard/                   # LakePulse dashboard (FastAPI + inline-SVG UI)
+├── flink/                       # Flink SQL client and streaming jobs
+├── producer/                    # Clickstream data producer using Faker
+├── superset/                    # Superset setup and configuration
+└── trino/                       # Trino configuration for Iceberg 
 ```
 
 * * * * *
@@ -81,8 +86,7 @@ e2e-data-pipeline/
 ### **2\. Clone the Repository**
 
 ```bash
-git clone https://github.com/abeltavares/real-time-data-pipeline.git
-cd real-time-data-pipeline
+cd LakePulse
 ```
 
 ### **3\. Start All Services**
@@ -97,10 +101,11 @@ docker-compose up -d
 
 | **Service** | **URL** | **Credentials** |
 | --- | --- | --- |
+| **LakePulse Dashboard** | `http://localhost:8090` | *No Auth* |
 | **Kafka Control Center** | `http://localhost:9021` | *No Auth* |
 | **Flink Dashboard** | `http://localhost:18081` | *No Auth* |
 | **MinIO Console** | `http://localhost:9001` | `admin` / `password` |
-| **Trino UI** | `http://localhost:8080/ui` | *No Auth* |
+| **Trino UI** | `http://localhost:8081/ui` | *No Auth* |
 | **Superset** | `http://localhost:8088` | `admin` / `admin` |
 
 
@@ -179,7 +184,7 @@ Processed data from Flink is stored in **Iceberg tables** on **MinIO**. This ena
 To list the contents of the MinIO warehouse, you can use the following command:
 
 ```bash
-docker exec mc bash -c "mc ls -r minio/warehouse/"
+docker exec lakepulse-mc sh -c "mc ls -r minio/warehouse/"
 ```
 
 Alternatively, you can access the MinIO console via the web at <http://localhost:9001>.
@@ -213,6 +218,28 @@ LIMIT 10;
 ```
 
 ![Trino Query](img/trino-query.png)
+
+📊 **LakePulse Dashboard**
+--------------------------
+
+A single web UI over the whole pipeline at <http://localhost:8090> — no login.
+
+- **Pipeline status strip** — live probe of Kafka, Flink (actual job state), the
+  Iceberg REST catalog, MinIO and Trino.
+- **KPIs** — purchases, revenue, average order, buyers, and the share of events
+  that carry an amount.
+- **Purchases per minute** — area + line chart with crosshair and tooltip.
+- **Revenue by device** — bars with direct value labels.
+- **Latest purchases** — live tail of the newest events.
+
+It refreshes every 5s (pausable), supports light/dark, and reads the Iceberg sink
+through Trino — a read-only consumer that changes nothing in the pipeline.
+
+```bash
+docker compose up --build -d dashboard   # rebuild after editing dashboard/
+```
+
+* * * * *
 
 📊 **Data Visualization with Apache Superset**
 ----------------------------------------------
@@ -292,6 +319,13 @@ LIMIT 10;
 Contributions are welcome! Feel free to submit issues or pull requests to improve this project.
 
 * * * * *
+
+🙏 Credits
+--------------
+
+LakePulse builds on the E2E real-time data pipeline by
+[Abel dos Santos Tavares](https://github.com/abeltavares/real-time-data-pipeline),
+whose MIT copyright is retained in [LICENSE](LICENSE).
 
 📜 License
 --------------
